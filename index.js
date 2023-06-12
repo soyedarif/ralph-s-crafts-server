@@ -41,6 +41,8 @@ async function run() {
     await client.connect();
     //users
     const usersCollection = client.db("ralphCrafsDB").collection("users");
+    const classesCollection = client.db("ralphCrafsDB").collection("classes");
+    const instructorsCollection = client.db("ralphCrafsDB").collection("instructors");
 
     app.post("/jwt", (req, res) => {
       const user = req.body;
@@ -50,6 +52,18 @@ async function run() {
 
     app.get("/users", verifyJWT, async (req, res) => {
       const result = await usersCollection.find().toArray();
+      res.send(result);
+    });
+
+    app.get("/instructors", async (req, res) => {
+      let result;
+
+      if (req.query.limit) {
+        const limit = parseInt(req.query.limit);
+        result = await instructorsCollection.find().sort({ enrolled: -1 }).limit(limit).toArray();
+      } else {
+        result = await instructorsCollection.find().sort({ enrolled: -1 }).toArray();
+      }
       res.send(result);
     });
 
@@ -76,6 +90,17 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/users/admin/:email", verifyJWT, async (req, res) => {
+      const email = req.params.email;
+      if (req.decoded.email !== email) {
+        res.send({ admin: false });
+      }
+      const query = { email: email };
+      const user = await usersCollection.findOne(query);
+      const result = { admin: user?.role === "admin" };
+      res.send(result);
+    });
+
     app.patch("/users/admin/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -87,7 +112,17 @@ async function run() {
       const result = await usersCollection.updateOne(query, updateRole);
       res.send(result);
     });
-    
+
+    app.get("/users/instructor/:email", verifyJWT, async (req, res) => {
+      const email = req.params.email;
+      if (req.decoded.email !== email) {
+        res.send({ instructor: false });
+      }
+      const query = { email: email };
+      const user = await usersCollection.findOne(query);
+      const result = { instructor: user?.role === "instructor" };
+      res.send(result);
+    });
     app.patch("/users/instructor/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -100,6 +135,12 @@ async function run() {
       res.send(result);
     });
 
+    app.post("/classes", async (req, res) => {
+      const course = req.body;
+      course.status = "pending";
+      const result = await classesCollection.insertOne(course);
+      res.send(result);
+    });
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
