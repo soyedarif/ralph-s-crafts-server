@@ -135,12 +135,65 @@ async function run() {
       res.send(result);
     });
 
+    app.get('/classes/:id',async(req,res)=>{
+        const id= req.params.id;
+        const query= {_id: new ObjectId(id)}
+        const result= await classesCollection.findOne(query)
+        res.send(result)
+    })
+
+    app.get("/classes", async (req, res) => {
+      const { email } = req.query;
+      let query = {};
+      if (email) {
+        query = { instructorEmail: email };
+      }
+      const result = await classesCollection.find(query).toArray();
+      res.send(result);
+    });
+    app.patch("/classes/approve/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const statusApprove = {
+        $set: {
+          status: "approved",
+        },
+      };
+      const result = await classesCollection.updateOne(query, statusApprove);
+      res.send(result);
+    });
+
+    app.patch("/classes/denied/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const statusDenied = {
+        $set: {
+          status: "denied",
+        },
+      };
+      const result = await classesCollection.updateOne(query, statusDenied);
+      res.send(result);
+    });
+    app.patch("/classes/feedback/:id", async (req, res) => {
+        const id = req.params.id;
+        const message = req.body.feedback; 
+        const query = { _id: new ObjectId(id) }; 
+        const feedback = {
+          $set: {
+            feedback: message,
+          },
+        };
+        const result = await classesCollection.updateOne(query, feedback);
+        res.send(result);
+      });
+      
     app.post("/classes", async (req, res) => {
       const course = req.body;
       course.status = "pending";
       const result = await classesCollection.insertOne(course);
       res.send(result);
     });
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
