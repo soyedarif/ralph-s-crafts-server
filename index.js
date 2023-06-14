@@ -38,7 +38,7 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+     client.connect();
     //users
     const usersCollection = client.db("ralphCrafsDB").collection("users");
     const classesCollection = client.db("ralphCrafsDB").collection("classes");
@@ -135,12 +135,12 @@ async function run() {
       res.send(result);
     });
 
-    app.get('/classes/:id',async(req,res)=>{
-        const id= req.params.id;
-        const query= {_id: new ObjectId(id)}
-        const result= await classesCollection.findOne(query)
-        res.send(result)
-    })
+    app.get("/classes/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await classesCollection.findOne(query);
+      res.send(result);
+    });
 
     app.get("/classes", async (req, res) => {
       const { email } = req.query;
@@ -175,18 +175,18 @@ async function run() {
       res.send(result);
     });
     app.patch("/classes/feedback/:id", async (req, res) => {
-        const id = req.params.id;
-        const message = req.body.feedback; 
-        const query = { _id: new ObjectId(id) }; 
-        const feedback = {
-          $set: {
-            feedback: message,
-          },
-        };
-        const result = await classesCollection.updateOne(query, feedback);
-        res.send(result);
-      });
-      
+      const id = req.params.id;
+      const message = req.body.feedback;
+      const query = { _id: new ObjectId(id) };
+      const feedback = {
+        $set: {
+          feedback: message,
+        },
+      };
+      const result = await classesCollection.updateOne(query, feedback);
+      res.send(result);
+    });
+
     app.post("/classes", async (req, res) => {
       const course = req.body;
       course.status = "pending";
