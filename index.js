@@ -10,11 +10,11 @@ app.use(cors());
 app.use(express.json());
 
 const verifyJWT = (req, res, next) => {
-  const authorization = req.headers.authorization;
-  if (!authorization) {
+  let token = req.headers.authorization;
+  if (!token) {
     return res.status(401).send({ error: true, message: "unauthorized access" });
   }
-  const token = authorization.split(" ")[1];
+   token = token.split(" ")[1];
   jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
     if (err) {
       return res.status(401).send({ error: true, message: "unauthorized access" });
@@ -38,46 +38,21 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-     client.connect();
-    //users
+    client.connect();
+
     const usersCollection = client.db("ralphCrafsDB").collection("users");
     const classesCollection = client.db("ralphCrafsDB").collection("classes");
-    const instructorsCollection = client.db("ralphCrafsDB").collection("instructors");
+    const bookCollection = client.db("ralphCrafsDB").collection("books");
 
+
+    // handle JWT
     app.post("/jwt", (req, res) => {
       const user = req.body;
       const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: "1h" });
       res.send({ token });
     });
 
-    app.get("/users", verifyJWT, async (req, res) => {
-      const result = await usersCollection.find().toArray();
-      res.send(result);
-    });
-
-    app.get("/instructors", async (req, res) => {
-      let result;
-
-      if (req.query.limit) {
-        const limit = parseInt(req.query.limit);
-        result = await instructorsCollection.find().sort({ enrolled: -1 }).limit(limit).toArray();
-      } else {
-        result = await instructorsCollection.find().sort({ enrolled: -1 }).toArray();
-      }
-      res.send(result);
-    });
-
-    app.get("/users/admin/:email", verifyJWT, async (req, res) => {
-      const email = req.params.email;
-      if (req.decoded.email !== email) {
-        res.send({ admin: false });
-      }
-      const query = { email: email };
-      const user = await usersCollection.findOne(query);
-      const result = { admin: user?.role === "admin" };
-      res.send(result);
-    });
-
+    //save user data
     app.post("/users", async (req, res) => {
       const user = req.body;
       const query = { email: user.email };
@@ -90,17 +65,32 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/users/admin/:email", verifyJWT, async (req, res) => {
-      const email = req.params.email;
-      if (req.decoded.email !== email) {
-        res.send({ admin: false });
-      }
-      const query = { email: email };
-      const user = await usersCollection.findOne(query);
-      const result = { admin: user?.role === "admin" };
+    //get users list
+    app.get("/users", verifyJWT, async (req, res) => {
+      const result = await usersCollection.find().toArray();
       res.send(result);
     });
 
+
+
+    app.get('/users/instructors', async(req,res)=>{
+      const result= await usersCollection.find({role:"instructor"}).toArray()
+      res.send(result)
+    })
+
+    //varify user role by email
+    app.get("/users/:email", verifyJWT, async (req, res) => {
+      const {email} = req.decoded;
+      if (email !== req.params.email) {
+        // res.send({ admin: false });
+        return res.status(403).send({ error: "bad auth" });
+      }
+      const user = await usersCollection.findOne({email});
+      const role = user.role
+      res.send({role});
+    });
+
+    //update user to ADMIN
     app.patch("/users/admin/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -113,16 +103,8 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/users/instructor/:email", verifyJWT, async (req, res) => {
-      const email = req.params.email;
-      if (req.decoded.email !== email) {
-        res.send({ instructor: false });
-      }
-      const query = { email: email };
-      const user = await usersCollection.findOne(query);
-      const result = { instructor: user?.role === "instructor" };
-      res.send(result);
-    });
+
+    //update user to instructor
     app.patch("/users/instructor/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -135,6 +117,14 @@ async function run() {
       res.send(result);
     });
 
+    //get all classes
+    app.get("/classes", async (req, res) => {
+      let query = { status: "approved" };
+      const result = await classesCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    // get class data by id for feedback
     app.get("/classes/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -142,15 +132,15 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/classes", async (req, res) => {
-      const { email } = req.query;
-      let query = {};
-      if (email) {
-        query = { instructorEmail: email };
-      }
+    //get instructor posted classes
+    app.get("/classes/:email", async (req, res) => {
+      const email = req.query.email;
+      const query = { instructorEmail: email };
       const result = await classesCollection.find(query).toArray();
       res.send(result);
     });
+
+    //update class status to approved
     app.patch("/classes/approve/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -162,7 +152,7 @@ async function run() {
       const result = await classesCollection.updateOne(query, statusApprove);
       res.send(result);
     });
-
+    //update class status to denied
     app.patch("/classes/denied/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -174,6 +164,7 @@ async function run() {
       const result = await classesCollection.updateOne(query, statusDenied);
       res.send(result);
     });
+    //update class with feedback
     app.patch("/classes/feedback/:id", async (req, res) => {
       const id = req.params.id;
       const message = req.body.feedback;
@@ -186,7 +177,7 @@ async function run() {
       const result = await classesCollection.updateOne(query, feedback);
       res.send(result);
     });
-
+    //post class by instructor
     app.post("/classes", async (req, res) => {
       const course = req.body;
       course.status = "pending";
