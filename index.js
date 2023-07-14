@@ -14,7 +14,7 @@ const verifyJWT = (req, res, next) => {
   if (!token) {
     return res.status(401).send({ error: true, message: "unauthorized access" });
   }
-   token = token.split(" ")[1];
+  token = token.split(" ")[1];
   jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
     if (err) {
       return res.status(401).send({ error: true, message: "unauthorized access" });
@@ -42,8 +42,7 @@ async function run() {
 
     const usersCollection = client.db("ralphCrafsDB").collection("users");
     const classesCollection = client.db("ralphCrafsDB").collection("classes");
-    const bookCollection = client.db("ralphCrafsDB").collection("books");
-
+    const bookedClassCollection = client.db("ralphCrafsDB").collection("bookedClass");
 
     // handle JWT
     app.post("/jwt", (req, res) => {
@@ -71,23 +70,21 @@ async function run() {
       res.send(result);
     });
 
-
-
-    app.get('/users/instructors', async(req,res)=>{
-      const result= await usersCollection.find({role:"instructor"}).toArray()
-      res.send(result)
-    })
+    app.get("/users/instructors", async (req, res) => {
+      const result = await usersCollection.find({ role: "instructor" }).toArray();
+      res.send(result);
+    });
 
     //varify user role by email
     app.get("/users/:email", verifyJWT, async (req, res) => {
-      const {email} = req.decoded;
+      const { email } = req.decoded;
       if (email !== req.params.email) {
         // res.send({ admin: false });
         return res.status(403).send({ error: "bad auth" });
       }
-      const user = await usersCollection.findOne({email});
-      const role = user.role
-      res.send({role});
+      const user = await usersCollection.findOne({ email });
+      const role = user.role;
+      res.send({ role });
     });
 
     //update user to ADMIN
@@ -103,7 +100,6 @@ async function run() {
       res.send(result);
     });
 
-
     //update user to instructor
     app.patch("/users/instructor/:id", async (req, res) => {
       const id = req.params.id;
@@ -118,9 +114,8 @@ async function run() {
     });
 
     //get all classes
-    app.get("/classes", async (req, res) => {
-      let query = { status: "approved" };
-      const result = await classesCollection.find(query).toArray();
+    app.get("/all-classes", async (req, res) => {
+      const result = await classesCollection.find().toArray();
       res.send(result);
     });
 
@@ -133,7 +128,7 @@ async function run() {
     });
 
     //get instructor posted classes
-    app.get("/classes/:email", async (req, res) => {
+    app.get("/classes", async (req, res) => {
       const email = req.query.email;
       const query = { instructorEmail: email };
       const result = await classesCollection.find(query).toArray();
@@ -181,9 +176,53 @@ async function run() {
     app.post("/classes", async (req, res) => {
       const course = req.body;
       course.status = "pending";
+      course.enrolled = 0;
       const result = await classesCollection.insertOne(course);
       res.send(result);
     });
+
+    //booked class posted
+    app.post("/booked-classes", verifyJWT, async (req, res) => {
+      const { courseId,seat, course, price, instructor, classImg, email } = req.body;
+      const existsCourse = await bookedClassCollection.findOne({
+        courseId: new ObjectId(courseId),
+        email: req.decoded.email,
+      });
+      if (existsCourse) {
+        return res.send({ message: `${course} course is already added!` });
+      }
+      const result = await bookedClassCollection.insertOne({
+        courseId: new ObjectId(courseId),
+        course,
+        price,
+        seat,
+        instructor,
+        classImg,
+        email,
+      });
+      res.send(result);
+    });
+    //booked class fetch
+    app.get("/booked-classes/:email", verifyJWT, async (req, res) => {
+      const email = req.params.email;
+
+      if (email !== req.decoded.email) {
+        return res.send({ error: true, message: "unauthorized access" });
+      }
+
+      try {
+        const result = await bookedClassCollection.find({ email: email }).toArray();
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ error: true, message: "An error occurred" });
+      }
+    });
+    //booked class delete
+    app.delete('/booked-classes/:id', async(req,res)=>{
+      const result = await bookedClassCollection.deleteOne({_id: new ObjectId(req.params.id)})
+      res.send(result)
+
+    })
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
