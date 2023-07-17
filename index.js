@@ -4,6 +4,8 @@ const cors = require("cors");
 require("dotenv").config();
 const jwt = require("jsonwebtoken");
 const port = process.env.PORT || 5000;
+const stripe = require("stripe")(process.env.PAYMENT_SECRET_KEY);
+
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
 app.use(cors());
@@ -43,6 +45,7 @@ async function run() {
     const usersCollection = client.db("ralphCrafsDB").collection("users");
     const classesCollection = client.db("ralphCrafsDB").collection("classes");
     const bookedClassCollection = client.db("ralphCrafsDB").collection("bookedClass");
+    const paidCollection = client.db("ralphCrafsDB").collection("paid");
 
     // handle JWT
     app.post("/jwt", (req, res) => {
@@ -183,7 +186,7 @@ async function run() {
 
     //booked class posted
     app.post("/booked-classes", verifyJWT, async (req, res) => {
-      const { courseId,seat, course, price, instructor, classImg, email } = req.body;
+      const { courseId, seat, course, price, instructor, classImg, email } = req.body;
       const existsCourse = await bookedClassCollection.findOne({
         courseId: new ObjectId(courseId),
         email: req.decoded.email,
@@ -217,12 +220,46 @@ async function run() {
         res.status(500).send({ error: true, message: "An error occurred" });
       }
     });
-    //booked class delete
-    app.delete('/booked-classes/:id', async(req,res)=>{
-      const result = await bookedClassCollection.deleteOne({_id: new ObjectId(req.params.id)})
-      res.send(result)
 
-    })
+    //booked class delete
+    app.delete("/booked-classes/:id", async (req, res) => {
+      const result = await bookedClassCollection.deleteOne({ _id: new ObjectId(req.params.id) });
+      res.send(result);
+    });
+
+    //create payment intent
+    app.post("/create-payment-intent", verifyJWT, async (req, res) => {
+      const { price } = req.body;
+      const amount = parseFloat(price.toFixed(2)) * 100;
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ["card"],
+      });
+      res.send({
+        clientSecret: paymentIntent.client_secret,
+      });
+    });
+
+    //paid related api
+    app.post("/payments", verifyJWT, async (req, res) => {
+      const payment = req.body;
+      const insertResult = await paidCollection.insertOne(payment);
+      const deleteQuery = { courseId: new ObjectId(payment.courseID) };
+      const deleteResult = await bookedClassCollection.deleteOne(deleteQuery);
+      const filter = { _id: new ObjectId(payment.courseID) };
+      const update = { $inc: { enrolled: 1, seat: -1 } };
+      const updateResult = await classesCollection.updateOne(filter, update);
+      res.send({ insertResult, deleteResult, updateResult });
+    });
+
+    //paid course read
+    app.get("/payments/:email", verifyJWT, async (req, res) => {
+      const email = req.params.email;
+      const result = await paidCollection.find({ email: email }).sort({ date: -1 }).toArray();
+      res.send(result);
+    });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
